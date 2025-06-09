@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>My MTG Price Tracker</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 1em;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 0.5em;
+      }
+      th {
+        background: #f4f4f4;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>My MTG Price Tracker</h1>
+    <p>
+      Cards loaded from your Scryfall searches; prices pulled live. Tick ✓ when
+      purchased.
+    </p>
+    <button id="loadBtn">Load Card List &amp; Prices</button>
+
+    <table id="cardsTable" hidden>
+      <thead>
+        <tr>
+          <th>✔️</th>
+          <th>Name</th>
+          <th>Set</th>
+          <th>Collector #</th>
+          <th>Price (USD)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <script>
+      // 1) Define your four Scryfall queries here:
+      const queries = [
+        "set:fca border:borderless -type:planeswalker",
+        "e:fic cn<=194 cn<=200",
+        "e:fic cn<=201 cn<=208",
+        'e:fin ((cn<=315 cn<=406) OR cn:"577")',
+      ];
+
+      // 2) Fetch all pages of results for one query
+      async function fetchAllFor(query) {
+        let url =
+          "https://api.scryfall.com/cards/search" +
+          "?order=set&unique=prints&q=" +
+          encodeURIComponent(query);
+        let all = [];
+        while (url) {
+          const resp = await fetch(url);
+          const data = await resp.json();
+          all.push(...data.data);
+          url = data.has_more ? data.next_page : null;
+        }
+        return all;
+      }
+
+      // 3) Load everything, render table, wire up checkboxes + localStorage
+      document.getElementById("loadBtn").onclick = async () => {
+        const btn = document.getElementById("loadBtn");
+        btn.textContent = "Loading…";
+        btn.disabled = true;
+
+        // load saved purchases
+        const saved = JSON.parse(localStorage.getItem("purchased") || "[]");
+        const purchased = new Set(saved);
+
+        // fetch all cards
+        let cards = [];
+        for (let q of queries) {
+          const subset = await fetchAllFor(q);
+          cards.push(...subset);
+        }
+
+        // build table
+        const tbody = document.querySelector("#cardsTable tbody");
+        tbody.innerHTML = "";
+        cards.forEach((card) => {
+          // Each card object has a `prices` field with {usd, usd_foil,…} :contentReference[oaicite:1]{index=1}
+          const price = card.prices.usd
+            ? `$${parseFloat(card.prices.usd).toFixed(2)}`
+            : "—";
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+        <td><input type="checkbox" data-id="${card.id}"></td>
+        <td>${card.name}</td>
+        <td>${card.set.toUpperCase()}</td>
+        <td>${card.collector_number}</td>
+        <td>${price}</td>
+      `;
+          const chk = tr.querySelector("input");
+          if (purchased.has(card.id)) chk.checked = true;
+          chk.addEventListener("change", (e) => {
+            if (e.target.checked) purchased.add(card.id);
+            else purchased.delete(card.id);
+            localStorage.setItem("purchased", JSON.stringify([...purchased]));
+          });
+          tbody.appendChild(tr);
+        });
+
+        document.getElementById("cardsTable").hidden = false;
+        btn.textContent = "Reload Prices";
+        btn.disabled = false;
+      };
+    </script>
+  </body>
+</html>
